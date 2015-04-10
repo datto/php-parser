@@ -7,8 +7,9 @@ The output is an abstract syntax tree ready for semantic analysis.
 
 ## Features
 
-* Powerful recursive-descent parser with 100% unit-test coverage
-* Ultra-lightweight (one tiny file that is barely 4 kB in length)
+* Powerful recursive-descent parser
+* Fully unit tested (100% code coverage)
+* Ultra-lightweight
 
 ## Requirements
 

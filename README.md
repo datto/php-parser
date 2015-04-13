@@ -21,10 +21,12 @@ This package is released under an open-source license: [LGPL-3.0](https://www.gn
 ## Installation
 
 If you're using [Composer](https://getcomposer.org/) as your dependency
-management system, you can install the source code like this:
-```
-composer require datto/php-parser
-```
+management system, you can include this package by inserting this line
+into the "require" section of your "composer.json" file:
+```        "datto/php-parser": "1.0.*"```
+
+Then update your Composer dependencies:
+```composer update```
 
 ## Unit tests
 

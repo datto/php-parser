@@ -1,8 +1,9 @@
 {
     "name": "datto/php-parser",
+    "type": "library",
     "description": "Define and parse a context-free grammar",
     "version": "1.0.0",
-    "keywords": ["php", "parse", "parser", "grammar", "context-free", "grammar"],
+    "keywords": ["php", "parse", "parser", "grammar", "context-free", "grammar", "recursive"],
     "homepage": "http://datto.com",
     "license": "LGPL-3.0",
     "authors": [

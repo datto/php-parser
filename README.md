@@ -24,7 +24,7 @@ If you're using [Composer](https://getcomposer.org/) as your dependency
 management system, you can include this package by inserting this line
 into the "require" section of your "composer.json" file:
 ```
-        "datto/php-parser": "1.0.*"
+        "datto/php-parser": "~2.0"
 ```
 
 Then update your Composer dependencies:

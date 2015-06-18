@@ -28,212 +28,418 @@ use PHPUnit_Framework_TestCase;
 
 class ParserTest extends PHPUnit_Framework_TestCase
 {
-    /** @var Parser */
-    private $parser;
+    /** @var array */
+    private $validCallable;
+
+    /** @var string */
+    private $invalidCallable;
 
     public function __construct()
     {
+        $this->validCallable = array($this, 'getArguments');
+        $this->invalidCallable = "\x00";
+    }
+
+    public function testGrammarStringRuleValid()
+    {
         $grammar = array(
-            'boolean' => [Parser::TYPE_OR, ['compound', 'unit']],
-            'compound' => [
-                Parser::TYPE_AND,
-                ['unit', 'space', 'operator', 'space', 'unit'],
-                [[2, 0], [0], [4]]
-            ],
-            'operator' => [Parser::TYPE_OR, ['and', 'or']],
-            'and' => [Parser::TYPE_STRING, 'and', ['AND']],
-            'or' => [Parser::TYPE_STRING, 'or', ['OR']],
-            'unit' => [Parser::TYPE_OR, ['group', 'atom']],
-            'group' => [Parser::TYPE_AND, ['(', 'boolean', ')'], 1],
-            '(' => [Parser::TYPE_STRING, '('],
-            ')' => [Parser::TYPE_STRING, ')'],
-            'atom' => [Parser::TYPE_OR, ['variable', 'true', 'false']],
-            'true' => [Parser::TYPE_STRING, 'true', [true]],
-            'false' => [Parser::TYPE_AND, ['f', 'alse'], [false]],
-            'f' => [Parser::TYPE_STRING, 'f'],
-            'alse' => [Parser::TYPE_STRING, 'alse'],
-            'variable' => [Parser::TYPE_RE, ':([a-z]+)', ['VAR', [1]]],
-            'space' => [Parser::TYPE_RE, '\s+']
+            '✓' => array(Parser::TYPE_STRING, 'text')
         );
 
-        $this->parser = new Parser($grammar);
+        $this->verifyGrammar($grammar, '✓', 'text', 'text');
     }
 
-    public function testInvalidPattern()
+    public function testGrammarStringRuleValidValue()
     {
-        $this->verify('', 'false', null);
+        $grammar = array(
+            '✓' => array(Parser::TYPE_STRING, 'text', true)
+        );
+
+        $this->verifyGrammar($grammar, '✓', 'text', true);
     }
 
-    public function testStringOverMatch()
+    public function testGrammarStringRuleInvalidType()
     {
-        $this->verify('and', 'and :x', null);
+        $grammar = array(
+            '✓' => array(Parser::TYPE_STRING, 'text'),
+            '✗' => array(Parser::TYPE_STRING, false)
+        );
+
+        $this->verifyGrammar($grammar, '✓', 'text', null);
     }
 
-    public function testStringExactMatch()
+    public function testGrammarStringRuleInvalidEmptyString()
     {
-        $this->verify('and', 'and', ['AND']);
+        $grammar = array(
+            '✓' => array(Parser::TYPE_STRING, 'text'),
+            '✗' => array(Parser::TYPE_STRING, '')
+        );
+
+        $this->verifyGrammar($grammar, '✓', 'text', null);
     }
 
-    public function testStringUnderMatch()
+    public function testGrammarStringRuleInvalidExcessArguments()
     {
-        $this->verify('and', 'a', null);
+        $grammar = array(
+            '✓' => array(Parser::TYPE_STRING, 'text'),
+            '✗' => array(Parser::TYPE_STRING, 'text', true, true)
+        );
+
+        $this->verifyGrammar($grammar, '✓', 'text', null);
     }
 
-    public function testStringNonMatch()
+    public function testGrammarExpressionRuleValidMatch()
     {
-        $this->verify('and', 'or', null);
+        $grammar = array(
+            '✓' => array(Parser::TYPE_RE, '-?[1-9][0-9]*')
+        );
+
+        $this->verifyGrammar($grammar, '✓', '42', '42');
     }
 
-    public function testRegularExpressionOverMatch()
+    public function testGrammarExpressionRuleValidNonMatch()
     {
-        $this->verify('variable', ':rain?', null);
+        $grammar = array(
+            '✓' => array(Parser::TYPE_RE, '-?[1-9][0-9]*')
+        );
+
+        $this->verifyGrammar($grammar, '✓', 'a + b', null);
     }
 
-    public function testRegularExpressionExactMatch()
+    public function testGrammarExpressionRuleValidCallable()
     {
-        $this->verify('variable', ':rain', ['VAR', 'rain']);
+        $grammar = array(
+            '✓' => array(Parser::TYPE_RE, '-?[1-9][0-9]*', 'intval')
+        );
+
+        $this->verifyGrammar($grammar, '✓', '42', 42);
     }
 
-    public function testRegularExpressionUnderMatch()
+    public function testGrammarExpressionRuleInvalidType()
     {
-        $this->verify('variable', ':', null);
+        $grammar = array(
+            '✗' => array(Parser::TYPE_RE, false),
+            '✓' => array(Parser::TYPE_RE, '-?[1-9][0-9]*')
+        );
+
+        $this->verifyGrammar($grammar, '✓', '42', null);
     }
 
-    public function testRegularExpressionNonMatch()
+    public function testGrammarExpressionRuleInvalidEmptyString()
     {
-        $this->verify('variable', 'true', null);
+        $grammar = array(
+            '✗' => array(Parser::TYPE_RE, ''),
+            '✓' => array(Parser::TYPE_RE, '-?[1-9][0-9]*')
+        );
+
+        $this->verifyGrammar($grammar, '✓', '42', null);
     }
 
-    public function testDisjunctionMatchA()
+    public function testGrammarExpressionRuleInvalidCallable()
     {
-        $this->verify('atom', ':variable', ['VAR', 'variable']);
+        $grammar = array(
+            '✗' => array(Parser::TYPE_RE, '-?[1-9][0-9]*', $this->invalidCallable),
+            '✓' => array(Parser::TYPE_RE, '-?[1-9][0-9]*')
+        );
+
+        $this->verifyGrammar($grammar, '✓', '42', null);
     }
 
-    public function testDisjunctionMatchB()
+    public function testGrammarExpressionRuleInvalidArgumentsExcess()
     {
-        $this->verify('atom', 'true', [true]);
+        $grammar = array(
+            '✗' => array(Parser::TYPE_RE, '-?[1-9][0-9]*', 'intval', true),
+            '✓' => array(Parser::TYPE_RE, '-?[1-9][0-9]*')
+        );
+
+        $this->verifyGrammar($grammar, '✓', '42', null);
     }
 
-    public function testDisjunctionMatchC()
+    public function testGrammarAndRuleValidMatch()
     {
-        $this->verify('atom', 'false', [false]);
+        $grammar = array(
+            '✓' => array(Parser::TYPE_AND, array('true', 'space', 'false')),
+            'true' => array(Parser::TYPE_STRING, 'true', true),
+            'space' => array(Parser::TYPE_RE, '\s+'),
+            'false' => array(Parser::TYPE_STRING, 'false', false)
+        );
+
+        $this->verifyGrammar($grammar, '✓', 'true false', array(true, ' ', false));
     }
 
-    public function testDisjunctionNonMatch()
+    public function testGrammarAndRuleValidNonMatch()
     {
-        $this->verify('atom', 'or', null);
+        $grammar = array(
+            '✓' => array(Parser::TYPE_AND, array('true', 'space', 'false')),
+            'true' => array(Parser::TYPE_STRING, 'true', true),
+            'space' => array(Parser::TYPE_RE, '\s+'),
+            'false' => array(Parser::TYPE_STRING, 'false', false)
+        );
+
+        $this->verifyGrammar($grammar, '✓', 'false false', null);
     }
 
-    public function testConjunctionOverMatch()
+    public function testGrammarAndRuleValidCallable()
     {
-        $this->verify('false', 'false and true', null);
+        $grammar = array(
+            '✓' => array(Parser::TYPE_AND, array('true', 'space', 'false'), $this->validCallable),
+            'true' => array(Parser::TYPE_STRING, 'true', true),
+            'space' => array(Parser::TYPE_RE, '\s+'),
+            'false' => array(Parser::TYPE_STRING, 'false', false)
+        );
+
+        $this->verifyGrammar($grammar, '✓', 'true false', '[true," ",false]');
     }
 
-    public function testConjunctionExactMatch()
+    public function testGrammarAndRuleInvalidType()
     {
-        $this->verify('false', 'false', [false]);
+        $grammar = array(
+            '✗' => array(Parser::TYPE_AND, false),
+            '✓' => array(Parser::TYPE_AND, array('true', 'space', 'false')),
+            'true' => array(Parser::TYPE_STRING, 'true', true),
+            'space' => array(Parser::TYPE_RE, '\s+'),
+            'false' => array(Parser::TYPE_STRING, 'false', false)
+        );
+
+        $this->verifyGrammar($grammar, '✓', 'true false', null);
     }
 
-    public function testConjunctionUnderMatch()
+    public function testGrammarAndRuleInvalidInsufficientOptions()
     {
-        $this->verify('false', 'f', null);
+        $grammar = array(
+            '✗' => array(Parser::TYPE_AND, array('true')),
+            '✓' => array(Parser::TYPE_AND, array('true', 'space', 'false')),
+            'true' => array(Parser::TYPE_STRING, 'true', true),
+            'space' => array(Parser::TYPE_RE, '\s+'),
+            'false' => array(Parser::TYPE_STRING, 'false', false)
+        );
+
+        $this->verifyGrammar($grammar, '✓', 'true false', null);
     }
 
-    public function testConjunctionNonMatch()
+    public function testGrammarAndRuleInvalidUnknownOption()
     {
-        $this->verify('false', 'true', null);
+        $grammar = array(
+            '✗' => array(Parser::TYPE_AND, array('true', 'space', 'unknown')),
+            '✓' => array(Parser::TYPE_AND, array('true', 'space', 'false')),
+            'true' => array(Parser::TYPE_STRING, 'true', true),
+            'space' => array(Parser::TYPE_RE, '\s+'),
+            'false' => array(Parser::TYPE_STRING, 'false', false)
+        );
+
+        $this->verifyGrammar($grammar, '✓', 'true false', null);
     }
 
-    public function testGrammarMatchA()
+    public function testGrammarAndRuleInvalidCallable()
     {
-        $this->verify('boolean', 'false or (true and false)',
-            ['OR', [false], ['AND', [true], [false]]]);
+        $grammar = array(
+            '✗' => array(Parser::TYPE_AND, array('true', 'space', 'false'), $this->invalidCallable),
+            '✓' => array(Parser::TYPE_AND, array('true', 'space', 'false')),
+            'true' => array(Parser::TYPE_STRING, 'true', true),
+            'space' => array(Parser::TYPE_RE, '\s+'),
+            'false' => array(Parser::TYPE_STRING, 'false', false)
+        );
+
+        $this->verifyGrammar($grammar, '✓', 'true false', null);
     }
 
-    public function testGrammarMatchB()
+    public function testGrammarAndRuleInvalidArgumentsExcess()
     {
-        $this->verify('boolean', '(false or true) and :x',
-            ['AND', ['OR', [false], [true]], ['VAR', 'x']]);
+        $grammar = array(
+            '✗' => array(Parser::TYPE_AND, array('true', 'space', 'false'), $this->validCallable, false),
+            '✓' => array(Parser::TYPE_AND, array('true', 'space', 'false')),
+            'true' => array(Parser::TYPE_STRING, 'true', true),
+            'space' => array(Parser::TYPE_RE, '\s+'),
+            'false' => array(Parser::TYPE_STRING, 'false', false)
+        );
+
+        $this->verifyGrammar($grammar, '✓', 'true false', null);
     }
 
-    public function testGrammarNonMatch()
+    public function testGrammarOrRuleValidMatchA()
     {
-        $this->verify('boolean', '(false or true) and', null);
+        $grammar = array(
+            '✓' => array(Parser::TYPE_OR, array('true', 'false')),
+            'true' => array(Parser::TYPE_STRING, 'true', true),
+            'false' => array(Parser::TYPE_STRING, 'false', false)
+        );
+
+        $this->verifyGrammar($grammar, '✓', 'true', true);
     }
 
-    public function testGrammarMissingGrammar()
+    public function testGrammarOrRuleValidMatchB()
+    {
+        $grammar = array(
+            '✓' => array(Parser::TYPE_OR, array('true', 'false')),
+            'true' => array(Parser::TYPE_STRING, 'true', true),
+            'false' => array(Parser::TYPE_STRING, 'false', false)
+        );
+
+        $this->verifyGrammar($grammar, '✓', 'false', false);
+    }
+
+    public function testGrammarOrRuleValidNonMatch()
+    {
+        $grammar = array(
+            '✓' => array(Parser::TYPE_OR, array('true', 'false')),
+            'true' => array(Parser::TYPE_STRING, 'true', true),
+            'false' => array(Parser::TYPE_STRING, 'false', false)
+        );
+
+        $this->verifyGrammar($grammar, '✓', 'unknown', null);
+    }
+
+    public function testGrammarOrRuleValidCallable()
+    {
+        $grammar = array(
+            '✓' => array(Parser::TYPE_OR, array('true', 'false'), $this->validCallable),
+            'true' => array(Parser::TYPE_STRING, 'true', true),
+            'false' => array(Parser::TYPE_STRING, 'false', false)
+        );
+
+        $this->verifyGrammar($grammar, '✓', 'true', '["true",true]');
+    }
+
+    public function testGrammarOrRuleInvalidType()
+    {
+        $grammar = array(
+            '✗' => array(Parser::TYPE_OR, false),
+            '✓' => array(Parser::TYPE_OR, array('true', 'false')),
+            'true' => array(Parser::TYPE_STRING, 'true', true),
+            'false' => array(Parser::TYPE_STRING, 'false', false)
+        );
+
+        $this->verifyGrammar($grammar, '✓', 'true', null);
+    }
+
+    public function testGrammarOrRuleInvalidInsufficientOptions()
+    {
+        $grammar = array(
+            '✗' => array(Parser::TYPE_OR, array('true')),
+            '✓' => array(Parser::TYPE_OR, array('true', 'false')),
+            'true' => array(Parser::TYPE_STRING, 'true', true),
+            'false' => array(Parser::TYPE_STRING, 'false', false)
+        );
+
+        $this->verifyGrammar($grammar, '✓', 'true', null);
+    }
+
+    public function testGrammarOrRuleInvalidUnknownOption()
+    {
+        $grammar = array(
+            '✗' => array(Parser::TYPE_OR, array('true', 'unknown')),
+            '✓' => array(Parser::TYPE_OR, array('true', 'false')),
+            'true' => array(Parser::TYPE_STRING, 'true', true),
+            'false' => array(Parser::TYPE_STRING, 'false', false)
+        );
+
+        $this->verifyGrammar($grammar, '✓', 'true', null);
+    }
+
+    public function testGrammarOrRuleInvalidCallable()
+    {
+        $grammar = array(
+            '✗' => array(Parser::TYPE_OR, array('true', 'false'), $this->invalidCallable),
+            '✓' => array(Parser::TYPE_OR, array('true', 'false')),
+            'true' => array(Parser::TYPE_STRING, 'true', true),
+            'false' => array(Parser::TYPE_STRING, 'false', false)
+        );
+
+        $this->verifyGrammar($grammar, '✓', 'true', null);
+    }
+
+    public function testGrammarOrRuleInvalidArgumentsExcess()
+    {
+        $grammar = array(
+            '✗' => array(Parser::TYPE_OR, array('true', 'false'), $this->validCallable, false),
+            '✓' => array(Parser::TYPE_OR, array('true', 'false')),
+            'true' => array(Parser::TYPE_STRING, 'true', true),
+            'false' => array(Parser::TYPE_STRING, 'false', false)
+        );
+
+        $this->verifyGrammar($grammar, '✓', 'true', null);
+    }
+
+    public function testGrammarUnknownRuleInvalid()
+    {
+        $grammar = array(
+            '✗' => array(-1, 'unknown'),
+            '✓' => array(Parser::TYPE_STRING, 'true')
+        );
+
+        $this->verifyGrammar($grammar, '✓', 'true', null);
+    }
+
+    public function testGrammarInvalidRule()
+    {
+        $grammar = array(
+            '✗' => false,
+            '✓' => array(Parser::TYPE_STRING, 'true')
+        );
+
+        $this->verifyGrammar($grammar, '✓', 'true', null);
+    }
+
+    public function testGrammarInvalidType()
+    {
+        $grammar = false;
+
+        $this->verifyGrammar($grammar, '✓', 'true', null);
+    }
+
+    public function testGrammarInvalidMissing()
     {
         $grammar = null;
 
-        $this->verifyGrammar($grammar, 'boolean', 'false', null);
+        $this->verifyGrammar($grammar, '✓', 'true', null);
     }
 
-    public function testGrammarMissingDefinition()
+    public function testInputRuleUnknown()
     {
         $grammar = array(
-            'variable' => null
+            '✓' => array(Parser::TYPE_STRING, 'true')
         );
 
-        $this->verifyGrammar($grammar, 'variable', 'x', null);
+        $this->verifyGrammar($grammar, 'unknown', 'true', null);
     }
 
-    public function testGrammarInvalidRuleType()
+    public function testInputRuleInvalid()
     {
         $grammar = array(
-            'variable' => [-1, ':([a-z]+)', ['VAR', [1]]]
+            '✓' => array(Parser::TYPE_STRING, 'true')
         );
 
-        $this->verifyGrammar($grammar, 'variable', 'x', null);
+        $this->verifyGrammar($grammar, array(), 'true', null);
     }
 
-    public function testGrammarEmptyStringLiteral()
+    public function testInputTextInvalid()
     {
         $grammar = array(
-            'false' => [Parser::TYPE_STRING, '', [false]]
+            '✓' => array(Parser::TYPE_STRING, 'true')
         );
 
-        $this->verifyGrammar($grammar, 'false', '', null);
+        $this->verifyGrammar($grammar, '✓', false, null);
     }
 
-    public function testGrammarEmptyRegularExpression()
+    public function testInputTextExcess()
     {
         $grammar = array(
-            'variable' => [Parser::TYPE_RE, '', ['VAR', [0]]]
+            '✓' => array(Parser::TYPE_STRING, 'true')
         );
 
-        $this->verifyGrammar($grammar, 'variable', 'x', null);
+        $this->verifyGrammar($grammar, '✓', 'trueness', null);
     }
 
-    public function testGrammarEmptyConjunction()
-    {
-        $grammar = array(
-            'compound' => [Parser::TYPE_AND, [], null]
-        );
-
-        $this->verifyGrammar($grammar, 'compound', 'true or false', null);
-    }
-
-    public function testGrammarEmptyDisjunction()
-    {
-        $grammar = array(
-            'options' => [Parser::TYPE_OR, [], null]
-        );
-
-        $this->verifyGrammar($grammar, 'options', 'a', null);
-    }
-
-    private function verify($pattern, $input, $expectedOutput)
-    {
-        $actualOutput = $this->parser->parse($pattern, $input);
-
-        $this->assertSame($expectedOutput, $actualOutput);
-    }
-
-    private function verifyGrammar($grammar, $pattern, $input, $expectedOutput)
+    private function verifyGrammar($grammar, $rule, $input, $expectedOutput)
     {
         $parser = new Parser($grammar);
-        $actualOutput = $parser->parse($pattern, $input);
+        $actualOutput = $parser->parse($rule, $input);
 
         $this->assertSame($expectedOutput, $actualOutput);
+    }
+
+    public function getArguments()
+    {
+        return json_encode(func_get_args());
     }
 }

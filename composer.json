@@ -2,7 +2,6 @@
     "name": "datto/php-parser",
     "type": "library",
     "description": "Define and parse a context-free grammar",
-    "version": "1.0.0",
     "keywords": ["php", "parse", "parser", "grammar", "context-free", "grammar", "recursive"],
     "homepage": "http://datto.com",
     "license": "LGPL-3.0",
@@ -18,7 +17,7 @@
         "php": ">=5.3.0"
     },
     "require-dev": {
-        "phpunit/phpunit": "3.7.*"
+        "phpunit/phpunit": "~3.7"
     },
     "autoload": {
         "psr-4": {
@@ -27,7 +26,7 @@
     },
     "autoload-dev": {
         "psr-4": {
-            "Datto\\Tests\\": "tests"
+            "Datto\\": "tests"
         }
     }
 }

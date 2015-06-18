@@ -33,9 +33,7 @@ Then update your Composer dependencies:
 ## Unit tests
 
 You can run the suite of unit tests from the project directory like this:
-```
-./vendor/bin/phpunit
-```
+```./vendor/bin/phpunit```
 
 ## Author
 

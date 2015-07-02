@@ -10,7 +10,7 @@
     </logging>
     <filter>
         <blacklist>
-            <directory>tests/Example</directory>
+            <directory>coverage</directory>
             <directory>vendor</directory>
         </blacklist>
     </filter>

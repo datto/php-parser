@@ -2,7 +2,7 @@
 <phpunit bootstrap="./vendor/autoload.php" colors="true">
     <testsuites>
         <testsuite name="json-rpc tests">
-            <directory>tests</directory>
+            <directory suffix="Test.php">tests</directory>
         </testsuite>
     </testsuites>
     <logging>
@@ -12,6 +12,7 @@
         <blacklist>
             <directory>coverage</directory>
             <directory>vendor</directory>
+            <directory>tests</directory>
         </blacklist>
     </filter>
 </phpunit>

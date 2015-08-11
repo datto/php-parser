@@ -28,163 +28,360 @@ class Parser
 {
     const TYPE_STRING = 1;
     const TYPE_RE = 2;
-    const TYPE_AND = 3;
-    const TYPE_OR = 4;
+    const TYPE_METHOD = 3;
+    const TYPE_MANY = 4;
+    const TYPE_OR = 5;
+    const TYPE_AND = 6;
 
     /** @var array */
-    private $grammar;
+    private $rules;
 
-    public function __construct($grammar)
+    /** @var string */
+    protected $input;
+
+    /** @var int */
+    protected $i;
+
+    /**
+     * @param array $rules
+     */
+    public function __construct($rules)
     {
-        if (self::isValidGrammar($grammar)) {
-            $this->grammar = $grammar;
+        if ($this->isValidRules($rules)) {
+            $this->rules = $rules;
         }
     }
 
-    public function parse($rule, $input)
+    /**
+     * @param string $rule
+     * @param string $input
+     * @return mixed
+     */
+    public function evaluate($rule, $input)
     {
-        if (!isset($this->grammar)) {
+        // Invalid rules
+        if (is_null($this->rules)) {
             return null;
         }
 
-        if (!self::isValidRuleName($this->grammar, $rule) || !self::isValidInput($input)) {
+        // Invalid arguments
+        if (!self::isValidRuleName($rule) || !self::isValidInput($input)) {
             return null;
         }
 
-        $this->evaluate($rule, $input, $output);
+        // Unknown rule
+        if (!isset($this->rules[$rule])) {
+            return null;
+        }
 
-        if ($input !== false) {
+        $this->input = $input;
+        $this->i = 0;
+
+        // Not a match
+        if (!$this->applyRule($rule, $output)) {
+            return null;
+        }
+
+        // Incomplete match
+        if ($this->i !== strlen($input)) {
             return null;
         }
 
         return $output;
     }
 
-    private function evaluate($name, &$input, &$output)
+    private function applyRule($rule, &$output)
     {
-        $rule = @$this->grammar[$name];
-        $type = array_shift($rule);
+        $definition = $this->rules[$rule];
+
+        $type = array_shift($definition);
 
         switch ($type) {
-            default: # self::TYPE_STRING
-                return $this->evaluateString($rule, $input, $output);
+            default: # self::STRING:
+                return $this->getString($definition, $output);
 
             case self::TYPE_RE:
-                return $this->evaluateExpression($rule, $input, $output);
+                @list($pattern, $method) = $definition;
+                return $this->getExpression($pattern, $method, $output);
+
+            case self::TYPE_METHOD:
+                @list($method) = $definition;
+                return $this->getMethod($method, $output);
 
             case self::TYPE_AND:
-                return $this->evaluateAnd($rule, $input, $output);
+                @list($rules, $method) = $definition;
+                return $this->getAnd($rules, $method, $output);
 
             case self::TYPE_OR:
-                return $this->evaluateOr($rule, $input, $output);
+                @list($rules, $method) = $definition;
+                return $this->getOr($rules, $method, $output);
+
+            case self::TYPE_MANY:
+                @list($rule, $min, $max, $method) = $definition;
+                return $this->getMany($rule, $min, $max, $method, $output);
         }
     }
 
-    private function evaluateString($rule, &$input, &$output)
+    private function getString($definition, &$output)
     {
-        $pattern = array_shift($rule);
-        $length = strlen($pattern);
+        @list($needle, $value) = $definition;
 
-        if (strncmp($input, $pattern, $length) !== 0) {
+        $length = strlen($needle);
+        $i = &$this->i;
+
+        if (@substr_compare($this->input, $needle, $i, $length) !== 0) {
             return false;
         }
 
-        $input = substr($input, $length);
-
-        if (count($rule) === 1) {
-            $value = array_shift($rule);
+        if (array_key_exists(1, $definition)) {
             $output = $value;
         } else {
-            $output = $pattern;
+            $output = $needle;
         }
 
+        $this->i += $length;
         return true;
     }
 
-    private function evaluateExpression($rule, &$input, &$output)
+    private function getExpression($pattern, $method, &$output)
     {
-        $innerPattern = array_shift($rule);
+        $subject = substr($this->input, $this->i);
 
-        $delimiter = "\x03";
-        $outerPattern = "{$delimiter}^{$innerPattern}{$delimiter}";
+        $pregPattern = self::getPregPattern($pattern);
 
-        if (preg_match($outerPattern, $input, $matches) !== 1) {
+        if (preg_match($pregPattern, $subject, $matches) !== 1) {
             return false;
         }
 
-        $length = strlen($matches[0]);
-        $input = substr($input, $length);
+        if (is_int($method)) {
+            $output = @$matches[$method];
 
-        if (count($rule) === 1) {
-            $callable = array_shift($rule);
-            $output = @call_user_func_array($callable, $matches);
+            if (!is_string($output)) {
+                return false;
+            }
+        } elseif (is_string($method)) {
+            $output = $this->callUserMethod($method, $matches);
         } else {
             $output = $matches[0];
         }
 
+        $this->i += strlen($matches[0]);
         return true;
     }
 
-    private function evaluateAnd($rule, &$input, &$output)
+    private static function getPregPattern($pattern)
     {
-        $values = array();
+        $delimiter = "\x03";
 
-        $originalText = $input;
+        return "{$delimiter}^{$pattern}{$delimiter}";
+    }
 
-        $patterns = array_shift($rule);
+    private function getMethod($method, &$output)
+    {
+        return $this->callUserMethod($method, array(&$output)) === true;
+    }
 
-        foreach ($patterns as $pattern) {
-            if (!$this->evaluate($pattern, $input, $value)) {
-                $input = $originalText;
+    private function getAnd($rules, $method, &$output)
+    {
+        $i = $this->i;
+
+        $output = array();
+
+        foreach ($rules as $rule) {
+            if (!$this->applyRule($rule, $output[])) {
+                $this->i = $i;
                 return false;
             }
-
-            $values[] = $value;
         }
 
-        if (count($rule) === 1) {
-            $callable = array_shift($rule);
-            $output = @call_user_func_array($callable, $values);
-        } else {
-            $output = $values;
+        if (is_string($method)) {
+            $output = $this->callUserMethod($method, $output);
+        } elseif (is_int($method)) {
+            $output = $output[$method];
         }
 
         return true;
     }
 
-    private function evaluateOr($rule, &$input, &$output)
+    private function getOr($rules, $method, &$output)
     {
-        $originalText = $input;
-
-        $patterns = array_shift($rule);
-
-        foreach ($patterns as $pattern) {
-            if ($this->evaluate($pattern, $input, $value)) {
-                if (count($rule) === 1) {
-                    $callable = array_shift($rule);
-                    $output = @call_user_func($callable, $pattern, $value);
-                } else {
-                    $output = $value;
-                }
-
-                return true;
+        foreach ($rules as $rule) {
+            if (!$this->applyRule($rule, $output)) {
+                continue;
             }
 
-            $input = $originalText;
+            if (is_string($method)) {
+                $output = $this->callUserMethod($method, array($output, $rule));
+            }
+
+            return true;
         }
 
         return false;
     }
 
-    private static function isValidGrammar($input)
+    private function getMany($rule, $min, $max, $method, &$output)
+    {
+        $i = $this->i;
+
+        $output = array();
+
+        while ($this->applyRule($rule, $output[]));
+
+        array_pop($output);
+        $n = count($output);
+
+        if (($min !== null) && ($n < $min)) {
+            $this->i = $i;
+            return false;
+        }
+
+        if (($max !== null) && ($max < $n)) {
+            $this->i = $i;
+            return false;
+        }
+
+        if (is_string($method)) {
+            $output = $this->callUserMethod($method, array($output));
+        }
+
+        return true;
+    }
+
+    private function callUserMethod($method, $input)
+    {
+        $callable = array($this, $method);
+
+        return @call_user_func_array($callable, $input);
+    }
+
+    private function isValidRules($rules)
+    {
+        if (!is_array($rules) || (count($rules) === 0)) {
+            return false;
+        }
+
+        foreach ($rules as $name => $definition) {
+            if (!self::isValidRuleName($name)) {
+                return false;
+            }
+
+            if (!$this->isValidRuleDefinition($definition, $rules)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static function isValidRuleName($name)
+    {
+        return is_string($name) && (0 < strlen($name));
+    }
+
+    private function isValidRuleDefinition($definition, $rules)
+    {
+        if (!is_array($definition)) {
+            return false;
+        }
+
+        return $this->isValidStringRule($definition)
+            || $this->isValidExpressionRule($definition)
+            || $this->isValidMethodRule($definition)
+            || $this->isValidAndRule($definition, $rules)
+            || $this->isValidOrRule($definition, $rules)
+            || $this->isValidManyRule($definition);
+    }
+
+    private function isValidStringRule($definition)
+    {
+        @list($type, $needle) = $definition;
+
+        return ($type === self::TYPE_STRING)
+            && self::isValidStringRuleNeedle($needle);
+    }
+
+    private static function isValidStringRuleNeedle($needle)
+    {
+        return is_string($needle) && (0 < strlen($needle));
+    }
+
+    private function isValidMethod($method)
+    {
+        $callable = array($this, $method);
+
+        return is_callable($callable);
+    }
+
+    private function isValidExpressionRule($definition)
+    {
+        @list($type, $pattern, $method) = $definition;
+
+        return ($type === self::TYPE_RE)
+            && self::isValidRegularExpression($pattern)
+            && (is_null($method) || self::isValidIndex($method) || $this->isValidMethod($method));
+    }
+
+    private static function isValidRegularExpression($pattern)
+    {
+        return is_string($pattern)
+            && (0 < strlen($pattern))
+            && (@preg_match(self::getPregPattern($pattern), null) !== false);
+    }
+
+    private static function isValidIndex($i)
+    {
+        return is_int($i) && (0 <= $i);
+    }
+
+    private function isValidMethodRule($definition)
+    {
+        @list($type, $method) = $definition;
+
+        return ($type === self::TYPE_METHOD)
+            && $this->isValidMethod($method);
+    }
+
+    private function isValidAndRule($definition, $rules)
+    {
+        @list($type, $ruleList, $method) = $definition;
+
+        return ($type === self::TYPE_AND)
+            && self::isValidRulesList($rules, $ruleList)
+            && $this->isValidAndRuleMethod($method, $ruleList);
+    }
+
+    private function isValidAndRuleMethod($method, $rules)
+    {
+        if (is_null($method)) {
+            return true;
+        }
+
+        if (is_int($method)) {
+            return (0 <= $method) && ($method < count($rules));
+        }
+
+        if (is_string($method)) {
+            return $this->isValidMethod($method);
+        }
+
+        return false;
+    }
+
+    private static function isValidRulesList($rules, $input)
     {
         if (!is_array($input) || (count($input) === 0)) {
             return false;
         }
 
-        foreach ($input as $definition)
-        {
-            if (!self::isValidRuleDefinition($input, $definition)) {
+        $unknownRules = array_diff($input, array_keys($rules));
+
+        if (0 < count($unknownRules)) {
+            return false;
+        }
+
+        foreach ($input as $value) {
+            if (!self::isValidRuleName($value)) {
                 return false;
             }
         }
@@ -192,132 +389,24 @@ class Parser
         return true;
     }
 
-    private static function isValidRuleDefinition($grammar, $input)
+    private function isValidOrRule($definition, $rules)
     {
-        if (!is_array($input)) {
-            return false;
-        }
+        @list($type, $ruleList, $method) = $definition;
 
-        $type = array_shift($input);
-
-        switch ($type)
-        {
-            case self::TYPE_STRING:
-                return self::isValidStringDefinition($input);
-
-            case self::TYPE_RE:
-                return self::isValidExpressionDefinition($input);
-
-            case self::TYPE_AND:
-                return self::isValidAndDefinition($grammar, $input);
-
-            case self::TYPE_OR:
-                return self::isValidOrDefinition($grammar, $input);
-        }
-
-        return false;
+        return ($type === self::TYPE_OR)
+            && self::isValidRulesList($rules, $ruleList)
+            && (is_null($method) || $this->isValidMethod($method));
     }
 
-    private static function isValidStringDefinition($input)
+    private function isValidManyRule($definition)
     {
-        $pattern = array_shift($input);
+        @list($type, $rule, $min, $max, $method) = $definition;
 
-        return is_string($pattern) && (0 < strlen($pattern)) && (count($input) < 2);
-    }
-
-    private static function isValidExpressionDefinition($input)
-    {
-        $pattern = array_shift($input);
-
-        if (!is_string($pattern) || (strlen($pattern) === 0)) {
-            return false;
-        }
-
-        if (count($input) === 0) {
-            return true;
-        }
-
-        $callable = array_shift($input);
-
-        if (!is_callable($callable)) {
-            return false;
-        }
-
-        if (count($input) !== 0) {
-            return false;
-        }
-
-        return true;
-    }
-
-    private static function isValidAndDefinition($grammar, $input)
-    {
-        $rules = array_shift($input);
-
-        if (!self::isValidRules($grammar, $rules) || (count($rules) < 2)) {
-            return false;
-        }
-
-        if (count($input) === 0) {
-            return true;
-        }
-
-        $callable = array_shift($input);
-
-        if (!is_callable($callable)) {
-            return false;
-        }
-
-        if (count($input) !== 0) {
-            return false;
-        }
-
-        return true;
-    }
-
-    private static function isValidOrDefinition($grammar, $input)
-    {
-        $rules = array_shift($input);
-
-        if (!self::isValidRules($grammar, $rules) || (count($rules) < 2)) {
-            return false;
-        }
-
-        if (count($input) === 0) {
-            return true;
-        }
-
-        $callable = array_shift($input);
-
-        if (!is_callable($callable)) {
-            return false;
-        }
-
-        if (count($input) !== 0) {
-            return false;
-        }
-
-        return true;
-    }
-
-    private static function isValidRules($grammar, $input)
-    {
-        if (!is_array($input)) {
-            return false;
-        }
-
-        foreach ($input as $rule) {
-            if (!self::isValidRuleName($grammar, $rule)) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private static function isValidRuleName($grammar, $input)
-    {
-        return @isset($grammar[$input]);
+        return ($type === self::TYPE_MANY)
+            && self::isValidRuleName($rule)
+            && (is_null($min) || (is_int($min) && (0 <= $min)))
+            && (is_null($max) || (is_int($max) && ($min <= $max)))
+            && (is_null($method) || $this->isValidMethod($method));
     }
 
     private static function isValidInput($input)

@@ -24,7 +24,7 @@ If you're using [Composer](https://getcomposer.org/), you can use this package
 ([datto/php-parser](https://packagist.org/packages/datto/php-parser))
 by inserting a line into the "require" section of your "composer.json" file:
 ```
-        "datto/php-parser": "~2.0"
+        "datto/php-parser": "~3.0"
 ```
 
 ## Unit tests

@@ -1,7 +1,7 @@
 <?xml version="1.0" ?>
 <phpunit bootstrap="./vendor/autoload.php" colors="true">
     <testsuites>
-        <testsuite name="json-rpc tests">
+        <testsuite name="tests">
             <directory suffix="Test.php">tests</directory>
         </testsuite>
     </testsuites>

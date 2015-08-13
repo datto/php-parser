@@ -172,8 +172,9 @@ class Parser
     private static function getPregPattern($pattern)
     {
         $delimiter = "\x03";
+        $flags = 'Ams'; // A: anchored, m: multiline, s: dot matches newlines
 
-        return "{$delimiter}^{$pattern}{$delimiter}";
+        return "{$delimiter}{$pattern}{$delimiter}{$flags}";
     }
 
     private function getMethod($method, &$output)
